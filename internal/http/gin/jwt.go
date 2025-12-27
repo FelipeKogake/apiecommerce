@@ -1,7 +1,6 @@
 package gin
 
 import (
-	"encoding/json"
 	"net/http"
 	"time"
 	"github.com/joho/godotenv"
@@ -9,31 +8,32 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 	"os"
 	"context"
-
+	"apiecommerce2/internal/usuario/mongodb"
+	"go.mongodb.org/mongo-driver/v2/bson"
+	"apiecommerce2/internal/usuario"
+	"log"
 )
 
-type Usuario struct {
-	ID string
-	Nome string 
-	Senha string
-}
 
- 
-type Claims struct {
-	Sub string
-	Usuario Usuario
-	jwt.RegisteredClaims
-}
-
-func GerarToken(ctx context.Context) gin.HandlerFunc {
+func GerarToken(ctx context.Context, s *mongodb.Repository) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		var credenciais Usuario
-		json.NewDecoder(c.Request.Body).Decode(&credenciais)
+		var credenciais usuario.Usuario
+		c.BindJSON(&credenciais)
 
-		cred, err := VerificarUsuario(ctx, credenciais);
+		cred, err := s.ValidarUsuario(ctx, credenciais);
+		if err != nil {
+			c.IndentedJSON(http.StatusBadRequest, gin.H{
+				"code":400,
+				"type":"BadRequest",
+				"message":"Credenciais incorretas.",
+			})
+			c.Abort()
+			return 
+		}
+
 		if  err != nil {
 			return 
-		} else if cred.ID == ""{
+		} else if cred.ID.IsZero() {
 			c.IndentedJSON(http.StatusBadRequest, gin.H{
 				"code":400,
 				"type":"BadRequest",
@@ -44,7 +44,8 @@ func GerarToken(ctx context.Context) gin.HandlerFunc {
 		}
 
 		expirationTime := time.Now().Add(1 * time.Hour)
-		claims := Claims{
+
+		claims := usuario.Claims{
 			Sub: cred.ID,
 			Usuario: cred,
 			RegisteredClaims:jwt.RegisteredClaims{
@@ -56,6 +57,7 @@ func GerarToken(ctx context.Context) gin.HandlerFunc {
 
 		token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 		tokenString, err := token.SignedString([]byte(os.Getenv("CHAVE_SECRETA")))
+
 		if err != nil {
 			c.IndentedJSON(http.StatusInternalServerError, gin.H{
 			"code":500,
@@ -66,8 +68,18 @@ func GerarToken(ctx context.Context) gin.HandlerFunc {
 			return 
 		}
 
+		c.SetCookie(
+			"session_token", // Nome do cookie
+			tokenString,    // Valor do cookie
+			3600,            // maxAge em segundos (1 hora)
+			"/",             // Path (disponível em todo o site)
+			"localhost",     // Domain (para qual domínio é válido)
+			true,            // Secure (enviar apenas sobre HTTPS)
+			true,            // HttpOnly (não acessível via JavaScript)
+		)
+
 		c.JSON(http.StatusOK, gin.H{
-			"token":tokenString,
+			"message": "Você esta logado!!",
 		})
 	}
 }
@@ -75,7 +87,11 @@ func GerarToken(ctx context.Context) gin.HandlerFunc {
 
 func ValidarToken(ctx context.Context) gin.HandlerFunc {
 	return func(c *gin.Context) {
-	tokenString := c.Request.Header.Get("Authorization")
+	tokenString, err := c.Cookie("session_token")
+	if err != nil {
+		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Não autorizado"})
+    return
+	}
 	if tokenString == "" {
 			c.IndentedJSON(http.StatusUnauthorized, gin.H{
 		"code":401,
@@ -89,7 +105,7 @@ func ValidarToken(ctx context.Context) gin.HandlerFunc {
 			tokenString = tokenString[7:]
 	}
 	
-	claims := &Claims{}
+	claims := &usuario.Claims{}
 
 	tkn, err := jwt.ParseWithClaims(tokenString, claims, func(token *jwt.Token) (interface{}, error) {
     	return []byte(os.Getenv("CHAVE_SECRETA")), nil
@@ -99,12 +115,32 @@ func ValidarToken(ctx context.Context) gin.HandlerFunc {
 		c.IndentedJSON(http.StatusUnauthorized, gin.H{
 		"code":401,
 		"type":"Unethorized",
-		"message":"Voce nao esta logado.",
+		"message":"Token inválido ou login não afetuado.",
 	})
 		c.Abort()
-		return
+	}
 	}
 }
-}
 
-func VerificarUsuario(ctx context.Context, usuario Usuario) (Usuario, error) {return Usuario{}, nil}
+func LocalizarUsuario(c *gin.Context) bson.ObjectID {
+	tokenString, err := c.Cookie("session_token")
+
+		claims := &usuario.Claims{}
+
+		tkn, err2 := jwt.ParseWithClaims(tokenString, claims, func(token *jwt.Token) (interface{}, error) {
+			return []byte(os.Getenv("CHAVE_SECRETA")), nil
+		})
+		if err2 != nil {
+			log.Println(err2)
+		}
+
+		if err != nil || !tkn.Valid {
+			c.IndentedJSON(http.StatusUnauthorized, gin.H{
+			"code":401,
+			"type":"Unethorized",
+			"message":"Token inválido.",
+			})
+				c.Abort()
+		}
+		return claims.Sub
+}

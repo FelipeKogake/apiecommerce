@@ -2,11 +2,14 @@ package categoria
 
 import (
 	"context"
+
+	"go.mongodb.org/mongo-driver/v2/mongo"
+	// "go.mongodb.org/mongo-driver/v2/bson"
 )
 
 type Reader interface {
 	Buscar(ctx context.Context, id string) (Categoria, error)
-	Listar(ctx context.Context) ([]Categoria, error)
+	Listar(ctx context.Context, filtro mongo.Pipeline) ([]Categoria, error)
 }
 
 type Writer interface {

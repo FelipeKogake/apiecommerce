@@ -1,0 +1,19 @@
+info:
+  contact:
+    email: felipe.kogake@gmail.com
+    name: API suport
+  description: Simulacao real dos processos envolvente de uma experiencia completa
+    dentro de uma navegacao de comercio digital
+  title: API de ecommerce
+  version: "1.0"
+paths:
+  /avaliacao:
+    post:
+      description: Adiciona uma avaliacao especificamente em um produto já existente
+      produces:
+      - application/json
+      responses: {}
+      summary: Adiciona uma nova avaliacao
+      tags:
+      - avaliacao
+swagger: "2.0"

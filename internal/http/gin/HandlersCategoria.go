@@ -1,7 +1,7 @@
 package gin
 
 import (
-	"apiecommerce2/categoria"
+	categoria "apiecommerce2/base_categoria"
 	"context"
 	"net/http"
 	"github.com/gin-gonic/gin"
@@ -9,14 +9,9 @@ import (
 	"log"
 )
 
-type CategoriaRequest struct {
-	ID string `json:"_id"`
-	Nome string `json:"nome" binding:"required"`
-}
-
 func AdicionarCategoria(ctx context.Context, serviceCategoria categoria.UseCase) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		var categoriaRequest CategoriaRequest
+		var categoriaRequest categoria.CategoriaRequest
 
 		if err := c.ShouldBindJSON(&categoriaRequest); err != nil {
 			log.Println(err)
@@ -24,20 +19,42 @@ func AdicionarCategoria(ctx context.Context, serviceCategoria categoria.UseCase)
 			return
 		}
 
-		categoriaIn := categoria.Categoria{
-			Nome: categoriaRequest.Nome,
-		}
+		categoria := categoriaRequest.ToCategoria()
 
-		if err := serviceCategoria.Adicionar(ctx, categoriaIn); err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{
-				"message": "Nao foi possível processar sua requisição.",
-				"erro": err,
-			})
+		if err := serviceCategoria.Adicionar(ctx, categoria); err != nil {
+			if err.Error() == "Already exists" {
+				c.JSON(http.StatusOK, gin.H{
+					"message": "A categoria já está cadastrada.",
+				})
+			} else {
+				c.JSON(http.StatusInternalServerError, gin.H{
+					"message": "Nao foi possível processar sua requisição.",
+				})
+			} 
 			c.Abort()
 		} else {
 			c.JSON(http.StatusOK, gin.H{
-				"message": "Requisião processada com sucesso!",
+				"message": "Categoria Adicionada com sucesso!",
 			})
 		}
+	}
+}
+
+func ListarCategorias(ctx context.Context, serviceCategoria categoria.UseCase) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		lista, err := serviceCategoria.Listar(ctx)
+		if err != nil {
+			log.Println(err)
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"message": "Nao foi possível processar sua requisição.",
+			})
+		} else if lista == nil {
+			c.JSON(http.StatusOK, gin.H{
+				"message": "Não categorias criadas.",
+			})
+		} else {
+			c.IndentedJSON(http.StatusOK, lista)
+		}
+		
 	}
 }

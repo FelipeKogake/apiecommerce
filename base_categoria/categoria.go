@@ -5,6 +5,6 @@ import (
 )
 
 type Categoria struct {
-	ID bson.ObjectID `bson:"omitempty"`
-	Nome string
+	ID bson.ObjectID 
+	Nome string 
 }
